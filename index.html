@@ -10,7 +10,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getFirestore, collection, addDoc, getDocs, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy, where
+    getFirestore, collection, addDoc, setDoc, getDocs, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy, where
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -25,7 +25,7 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  window.__fb = { db, collection, addDoc, getDocs, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy, where };
+  window.__fb = { db, collection, addDoc, setDoc, getDocs, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy, where };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
 
@@ -567,7 +567,7 @@ async function loadTeachers(){
   teachersBody.innerHTML = '<tr class="empty-row"><td colspan="7">جارِ التحميل...</td></tr>';
   try{
     await fbReadyPromise;
-    const q = fb.query(fb.collection(fb.db, TEACHERS_COLLECTION), fb.orderBy('createdAt','desc'));
+    const q = fb.collection(fb.db, TEACHERS_COLLECTION);
     const snap = await fb.getDocs(q);
     allTeachers = [];
     snap.forEach(d => allTeachers.push({ id: d.id, ...d.data() }));
@@ -855,7 +855,7 @@ async function loadStudents(){
   studentsBody.innerHTML = '<tr class="empty-row"><td colspan="7">جارِ التحميل...</td></tr>';
   try{
     await fbReadyPromise;
-    const q = fb.query(fb.collection(fb.db, STUDENTS_COLLECTION), fb.orderBy('createdAt','desc'));
+    const q = fb.collection(fb.db, STUDENTS_COLLECTION);
     const snap = await fb.getDocs(q);
     allStudents = [];
     snap.forEach(d => allStudents.push({ id: d.id, ...d.data() }));
@@ -868,8 +868,17 @@ async function loadStudents(){
   }
 }
 
+function studentIdKey(t){ return (t.unifiedCardNumber || t.civilIdNumber || '').toString().trim(); }
+function getDuplicateKeys(){
+  const counts = {};
+  allStudents.forEach(t => { const k = studentIdKey(t); if (k) counts[k] = (counts[k] || 0) + 1; });
+  return new Set(Object.keys(counts).filter(k => counts[k] > 1));
+}
 function renderStudentsStats(){
-  studentsStats.innerHTML = `<div class="stat-pill">إجمالي الطلاب المسجلين <b>${allStudents.length}</b></div>`;
+  const dups = getDuplicateKeys();
+  const dupRecords = allStudents.filter(t => dups.has(studentIdKey(t))).length;
+  studentsStats.innerHTML = `<div class="stat-pill">إجمالي الطلاب المسجلين <b>${allStudents.length}</b></div>` +
+    (dupRecords ? `<div class="stat-pill" style="color:#92400E;background:#FEF3C7;border-color:#FCD34D;">سجلات برقم هوية مكرر <b>${dupRecords}</b></div>` : '');
 }
 
 function renderDistribution(){
@@ -995,11 +1004,12 @@ function renderStudentsTable(){
     return;
   }
 
+  const dupKeys = getDuplicateKeys();
   studentsBody.innerHTML = list.map(t => `
     <tr>
       <td><input type="checkbox" class="row-check" data-id="${t.id}" ${selectedStudentIds.has(t.id) ? 'checked' : ''}></td>
       <td>${t.photo ? `<img class="thumb" src="${safeImg(t.photo)}">` : '-'}</td>
-      <td>${esc([t.studentFirstName, t.fatherName, t.grandfatherName].filter(Boolean).join(' '))}</td>
+      <td>${esc([t.studentFirstName, t.fatherName, t.grandfatherName].filter(Boolean).join(' '))}${dupKeys.has(studentIdKey(t)) ? ' <span style="background:#FEF3C7;color:#92400E;border-radius:8px;padding:2px 7px;font-size:11px;font-weight:700;" title="يوجد سجل آخر بنفس رقم الهوية">مكرر</span>' : ''}</td>
       <td>${esc(t.lastName)}</td>
       <td>${esc(t.grade)}</td>
       <td>${esc(t.section)}</td>
